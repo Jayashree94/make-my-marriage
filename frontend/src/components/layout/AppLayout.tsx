@@ -16,9 +16,19 @@ export function AppLayout({ brand, navItems, children }: AppLayoutProps) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <Link to="/dashboard" className="brand-mark">
-            {brand}
+          <Link to="/dashboard" className="brand-mark-wrap">
+            <span className="brand-logo" aria-hidden="true">MM</span>
+            <span className="brand-copy">
+              <span className="brand-mark">{brand}</span>
+              <span className="brand-subtitle">Crafting your forever story</span>
+            </span>
           </Link>
+        </div>
+
+        <div className="sidebar-card">
+          <span className="mini-label">Celebration</span>
+          <strong>Autumn soirée</strong>
+          <small>18 March 2027</small>
         </div>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
@@ -28,6 +38,16 @@ export function AppLayout({ brand, navItems, children }: AppLayoutProps) {
             </div>
           ))}
         </nav>
+
+        <div className="sidebar-footer">
+          <div className="user-pill">
+            <span className="avatar">AE</span>
+            <div>
+              <strong>Event lead</strong>
+              <small>Priya Sharma</small>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <div className="content-panel">
@@ -36,9 +56,14 @@ export function AppLayout({ brand, navItems, children }: AppLayoutProps) {
             <p className="eyebrow">Wedding planning dashboard</p>
             <h1>Planner overview</h1>
           </div>
-          <button className="primary-button" type="button">
-            New checklist item
-          </button>
+          <div className="topbar-actions">
+            <button className="secondary-button" type="button">
+              Quick view
+            </button>
+            <button className="primary-button" type="button">
+              New checklist item
+            </button>
+          </div>
         </header>
 
         <main className="page-content">{children}</main>

@@ -10,7 +10,7 @@ const stats: StatCard[] = [
 
 const summary: DashboardSummary = {
   coupleName: 'Aarav & Meera',
-  eventDate: 'March 18, 2027',
+  eventDate: '18 March 2027',
   month: 'March 2027',
   budget: 240000,
   guestCount: 250,
@@ -18,23 +18,46 @@ const summary: DashboardSummary = {
 };
 
 const upcoming: TableRow[] = [
-  { name: 'Venue walkthrough', status: 'Scheduled', detail: 'Friday, 10:00 AM' },
-  { name: 'Catering tasting', status: 'Pending', detail: 'Next Tuesday' },
-  { name: 'Floral moodboard review', status: 'In review', detail: 'Due Thursday' },
+  { name: 'Venue walkthrough', status: 'Scheduled', detail: 'Friday · 10:00 AM · Rosewood Garden' },
+  { name: 'Catering tasting', status: 'Pending', detail: 'Tuesday · 2:00 PM · Maison Dore' },
+  { name: 'Floral moodboard review', status: 'In review', detail: 'Thursday · 5:30 PM · Bridal suite' },
 ];
 
 export function DashboardPage() {
   return (
-    <div className="page-grid">
+    <div className="dashboard-shell">
       <section className="hero-card">
-        <div>
-          <p className="eyebrow">Plan overview</p>
-          <h2>{summary.coupleName}</h2>
-          <p className="muted">{summary.eventDate} · {summary.month}</p>
+        <div className="hero-copy">
+          <p className="eyebrow eyebrow-accent">Plan overview</p>
+          <h2 className="hero-title">{summary.coupleName}</h2>
+          <p className="hero-subcopy">
+            {summary.eventDate} · {summary.month} · curated with a refined, elevated guest experience.
+          </p>
+          <div className="hero-actions">
+            <button type="button" className="primary-button">
+              Review itinerary
+            </button>
+            <button type="button" className="secondary-button">
+              Open budget
+            </button>
+          </div>
         </div>
+
         <div className="hero-meta">
-          <span>Budget</span>
-          <strong>${summary.budget.toLocaleString()}</strong>
+          <div className="hero-date">
+            <span>Next milestone</span>
+            <strong>{summary.eventDate}</strong>
+          </div>
+          <div className="hero-budget">
+            <span>Overall budget</span>
+            <strong>${summary.budget.toLocaleString()}</strong>
+          </div>
+          <div className="hero-progress">
+            <span>Planning progress</span>
+            <div className="progress-track" aria-label="Planning progress">
+              <span style={{ width: '78%' }} />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -43,21 +66,28 @@ export function DashboardPage() {
           <article key={stat.label} className="stat-card">
             <span>{stat.label}</span>
             <strong>{stat.value}</strong>
-            {stat.trend ? <small>{stat.trend}</small> : null}
+            {stat.trend ? <small className="trend-pill">{stat.trend}</small> : null}
           </article>
         ))}
       </section>
 
-      <section className="content-grid">
+      <section className="dashboard-grid">
         <article className="panel">
           <div className="panel-header">
-            <h3>Upcoming milestones</h3>
-            <button type="button" className="secondary-button">View all</button>
+            <div>
+              <p className="eyebrow">Itinerary</p>
+              <h3>Upcoming milestones</h3>
+            </div>
+            <button type="button" className="secondary-button small-button">
+              View all
+            </button>
           </div>
-          <div className="table-list">
+
+          <div className="timeline-list">
             {upcoming.map((item) => (
-              <div key={item.name} className="row-item">
-                <div>
+              <div key={item.name} className="timeline-item">
+                <span className="timeline-dot" aria-hidden="true" />
+                <div className="timeline-copy">
                   <strong>{item.name}</strong>
                   <p>{item.detail}</p>
                 </div>
@@ -67,22 +97,37 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel">
-          <div className="panel-header">
-            <h3>Guest snapshot</h3>
-          </div>
-          <div className="metric-stack">
-            <div>
-              <span>Confirmed</span>
+        <aside className="side-stack">
+          <article className="panel">
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Guest summary</p>
+                <h3>Confirmed</h3>
+              </div>
+            </div>
+            <div className="mini-stat-row">
               <strong>{summary.guestCount}</strong>
+              <span>of 250 invited</span>
             </div>
-            <div>
-              <span>Booked vendors</span>
+            <div className="mini-progress" aria-label="Confirmed guests progress">
+              <span style={{ width: '92%' }} />
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Suppliers</p>
+                <h3>Booked vendors</h3>
+              </div>
+            </div>
+            <div className="mini-stat-row">
               <strong>{summary.vendorCount}</strong>
+              <span>design partners</span>
             </div>
-          </div>
-          <EmptyState title="No open invitations" description="All invites are in a good state." />
-        </article>
+            <EmptyState title="No open invitations" description="All invites are in a good state." />
+          </article>
+        </aside>
       </section>
     </div>
   );
