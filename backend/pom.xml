@@ -16,9 +16,9 @@
     <description>Make My Marriage application scaffold</description>
 
     <properties>
-        <java.version>25</java.version>
-        <maven.compiler.source>25</maven.compiler.source>
-        <maven.compiler.target>25</maven.compiler.target>
+        <java.version>24</java.version>
+        <maven.compiler.source>24</maven.compiler.source>
+        <maven.compiler.target>24</maven.compiler.target>
         <springdoc.version>2.6.0</springdoc.version>
     </properties>
 

@@ -1,3 +1,6 @@
+import { FormEvent, useState } from 'react';
+import { apiFetch } from './lib/api';
+
 const countdown = [
   { value: '142', label: 'DAYS' },
   { value: '18', label: 'HOURS' },
@@ -59,7 +62,226 @@ const vaultCards = [
   'The Golden Garden Farewell',
 ];
 
+type AuthMode = 'login' | 'register';
+
+type UserSession = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
+const emptyForm = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+};
+
 function App() {
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [form, setForm] = useState(emptyForm);
+  const [user, setUser] = useState<UserSession | null>(null);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentPage, setCurrentPage] = useState<'home' | 'signin'>('home');
+
+  const handleFieldChange = (field: keyof typeof emptyForm, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setStatusMessage('');
+    setIsSubmitting(true);
+
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const payload =
+        authMode === 'login'
+          ? { email: form.email, password: form.password }
+          : {
+              firstName: form.firstName,
+              lastName: form.lastName,
+              email: form.email,
+              password: form.password,
+            };
+
+      const response = await apiFetch<{ success: boolean; data?: UserSession; message?: string }>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      const account = response.data ?? null;
+
+      if (!account) {
+        throw new Error('No account data returned.');
+      }
+
+      setUser(account);
+      setForm(emptyForm);
+      setStatusMessage(
+        authMode === 'login'
+          ? `Welcome back, ${account.firstName}. Your private suite is ready.`
+          : `Welcome, ${account.firstName}. Your account has been created.`,
+      );
+
+      if (currentPage === 'signin') {
+        setCurrentPage('home');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Authentication request failed.';
+      setStatusMessage(message || 'Authentication request failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore backend error; logout still updates the local guest interface.
+    } finally {
+      setUser(null);
+      setStatusMessage('You have been signed out successfully.');
+    }
+  };
+
+  if (currentPage === 'signin') {
+    return (
+      <div className="auth-page-shell">
+        <header className="auth-topbar">
+          <div className="auth-brand-block" aria-label="Make My Marriage brand">
+            <div className="brand-mark">✦</div>
+            <div className="brand-copy">
+              <span>MAKE MY MARRIAGE</span>
+              <small>COUTURE CELEBRATIONS &amp; BESPOKE UNION SUITE</small>
+            </div>
+          </div>
+
+          <nav className="auth-nav" aria-label="Public navigation">
+            <a href="#">Celebration Suite</a>
+            <a href="#">Concierge Protocol</a>
+            <a href="#">Private Butler</a>
+          </nav>
+
+          <button type="button" className="auth-back-link" onClick={() => setCurrentPage('home')}>
+            <span>↩</span>
+            Back to Ceremony
+          </button>
+        </header>
+
+        <main className="auth-page-main">
+          <div className="auth-page-inner">
+            <div className="auth-page-header">
+              <div className="auth-crest-badge">
+                <span>shield</span>
+                <small>PRIVATE &amp; CONFIDENTIAL ACCESS</small>
+              </div>
+              <h1>Enter the Sanctuary of Eternal Unions</h1>
+              <p>Please sign in to access your bespoke wedding celebration suite and concierge portal.</p>
+            </div>
+
+            <div className="auth-page-card">
+              <div className="auth-mode-switch" aria-label="Authentication mode selector">
+                <button
+                  type="button"
+                  className={authMode === 'login' ? 'active' : ''}
+                  onClick={() => setAuthMode('login')}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'register' ? 'active' : ''}
+                  onClick={() => setAuthMode('register')}
+                >
+                  Create account
+                </button>
+              </div>
+
+              <form className="auth-page-form" onSubmit={handleAuthSubmit}>
+                {authMode === 'register' && (
+                  <div className="auth-split-fields">
+                    <label>
+                      <span>First name</span>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={form.firstName}
+                        onChange={(event) => handleFieldChange('firstName', event.target.value)}
+                        placeholder="First name"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Last name</span>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={form.lastName}
+                        onChange={(event) => handleFieldChange('lastName', event.target.value)}
+                        placeholder="Last name"
+                        required
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <label>
+                  <span>Email / Login ID</span>
+                  <input
+                    type="email"
+                    name="email"
+                    value={form.email}
+                    onChange={(event) => handleFieldChange('email', event.target.value)}
+                    placeholder="e.g. your email or login ID"
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    name="password"
+                    value={form.password}
+                    onChange={(event) => handleFieldChange('password', event.target.value)}
+                    placeholder="••••••••••••"
+                    required
+                  />
+                </label>
+
+                <div className="auth-page-utility">
+                  <label className="remember-box">
+                    <input type="checkbox" />
+                    <span>Remember this Session</span>
+                  </label>
+                  <a href="#rsvp">Forgot Password?</a>
+                </div>
+
+                <button type="submit" className="auth-page-submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Please wait...' : authMode === 'login' ? 'Log In to Celebration Suite' : 'Create Account'}
+                </button>
+
+                {statusMessage && <p className="auth-status">{statusMessage}</p>}
+              </form>
+
+              <div className="auth-divider">
+                <span>✦</span>
+              </div>
+
+              <div className="auth-page-footer">
+                <a href="#">Lost Cipher or Assistance?</a>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="page-shell">
       <div className="page-frame">
@@ -81,9 +303,16 @@ function App() {
             <a href="#rsvp">RSVP</a>
           </nav>
 
-          <button type="button" className="portal-button">
-            <span className="portal-icon">◌</span>
-            VIP Portal
+          <button
+            type="button"
+            className="portal-button"
+            onClick={() => {
+              setAuthMode('login');
+              setCurrentPage('signin');
+            }}
+            aria-label={user ? `${user.firstName} account portal` : 'VIP portal sign in'}
+          >
+            {user ? `${user.firstName} • Account` : 'Sign in'}
           </button>
         </header>
 
@@ -136,6 +365,111 @@ function App() {
                 <span>✧</span>
                 Enter VIP Suite
               </button>
+            </div>
+          </section>
+
+          <section className="auth-portal" aria-label="Authentication portal">
+            <div className="auth-copy">
+              <p className="eyebrow">PRIVATE ACCESS</p>
+              <h2>{user ? `Welcome back, ${user.firstName}` : 'Enter the Sanctuary of Eternal Unions'}</h2>
+              <p>
+                Secure your preferred seat in the wedding vault, access the guest concierge,
+                and keep every itinerary detail in one private sanctuary.
+              </p>
+              <ul className="auth-benefits">
+                <li>Instant access to guest itinerary updates</li>
+                <li>Personalized RSVP and concierge profile</li>
+                <li>Private editorial gallery and event ledger</li>
+              </ul>
+            </div>
+
+            <div className="auth-card">
+              <div className="auth-switch" aria-label="Authentication mode selector">
+                <button
+                  type="button"
+                  className={authMode === 'login' ? 'active' : ''}
+                  onClick={() => setAuthMode('login')}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'register' ? 'active' : ''}
+                  onClick={() => setAuthMode('register')}
+                >
+                  Create account
+                </button>
+              </div>
+
+              <form className="auth-form" onSubmit={handleAuthSubmit}>
+                {authMode === 'register' && (
+                  <div className="split-field">
+                    <label>
+                      <span>First name</span>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={form.firstName}
+                        onChange={(event) => handleFieldChange('firstName', event.target.value)}
+                        placeholder="First name"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Last name</span>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={form.lastName}
+                        onChange={(event) => handleFieldChange('lastName', event.target.value)}
+                        placeholder="Last name"
+                        required
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    name="email"
+                    value={form.email}
+                    onChange={(event) => handleFieldChange('email', event.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    name="password"
+                    value={form.password}
+                    onChange={(event) => handleFieldChange('password', event.target.value)}
+                    placeholder="Enter your password"
+                    required
+                  />
+                </label>
+
+                <div className="auth-utility">
+                  <span>Secure enclave</span>
+                  <a href="#rsvp">Need help?</a>
+                </div>
+
+                <button type="submit" className="auth-submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Please wait...' : authMode === 'login' ? 'Sign in' : 'Create account'}
+                </button>
+
+                {statusMessage && <p className="auth-status">{statusMessage}</p>}
+              </form>
+
+              {user && (
+                <button type="button" className="logout-btn" onClick={handleLogout}>
+                  Logout
+                </button>
+              )}
             </div>
           </section>
 

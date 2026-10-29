@@ -1,7 +1,9 @@
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:8081}
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
   application:
     name: make-my-marriage
   datasource:
@@ -11,7 +13,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
