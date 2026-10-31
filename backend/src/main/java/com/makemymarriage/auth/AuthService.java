@@ -54,6 +54,10 @@ public class AuthService {
 
         UserEntity user = new UserEntity(firstName, lastName, email, passwordEncoder.encode(rawPassword));
         UserEntity saved = userRepository.save(user);
+        Authentication auth = authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(email, rawPassword)
+        );
+        SecurityContextHolder.getContext().setAuthentication(auth);
         return toUserResponse(saved);
     }
 

@@ -1,5 +1,11 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch } from './lib/api';
+import StitchHomepage from './components/StitchHomepage';
+import {
+  defaultWeddingProfile,
+  WeddingOnboarding,
+  type WeddingProfile,
+} from './components/onboarding/WeddingOnboarding';
 
 const countdown = [
   { value: '142', label: 'DAYS' },
@@ -71,6 +77,18 @@ type UserSession = {
   email: string;
 };
 
+const profileStorageKey = (userId: number) =>
+  `make-my-marriage-wedding-profile:${userId}`;
+
+const parseWeddingProfile = (value: string | null): WeddingProfile | null => {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as WeddingProfile;
+  } catch {
+    return null;
+  }
+};
+
 const emptyForm = {
   firstName: '',
   lastName: '',
@@ -84,7 +102,96 @@ function App() {
   const [user, setUser] = useState<UserSession | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState<'home' | 'signin'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'signin' | 'onboarding'>('home');
+  const [weddingProfile, setWeddingProfile] = useState<WeddingProfile>(() => {
+    return defaultWeddingProfile;
+  });
+
+  const loadAccountProfile = async (account: UserSession): Promise<WeddingProfile> => {
+    const accountProfile = parseWeddingProfile(
+      window.localStorage.getItem(profileStorageKey(account.id)),
+    );
+    let resolvedProfile = accountProfile;
+
+    try {
+      const response = await apiFetch<{ success: boolean; data?: { profileJson?: string } }>(
+        '/profile/me',
+      );
+      if (response.data?.profileJson) {
+        resolvedProfile = parseWeddingProfile(response.data.profileJson) ?? accountProfile;
+      } else {
+        resolvedProfile = defaultWeddingProfile;
+        window.localStorage.removeItem(profileStorageKey(account.id));
+      }
+    } catch {
+      // Account-local browser storage remains available if the backend is temporarily unavailable.
+    }
+
+    resolvedProfile ??= defaultWeddingProfile;
+    window.localStorage.setItem(profileStorageKey(account.id), JSON.stringify(resolvedProfile));
+    return resolvedProfile;
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    void (async () => {
+      try {
+        const response = await apiFetch<{ success: boolean; data?: UserSession }>('/auth/me');
+        if (!mounted || !response.data) return;
+
+        const accountProfile = await loadAccountProfile(response.data);
+        if (!mounted) return;
+
+        setUser(response.data);
+        setWeddingProfile(accountProfile);
+        const complete =
+          Boolean(accountProfile.brideName) &&
+          Boolean(accountProfile.groomName) &&
+          Boolean(accountProfile.weddingDate) &&
+          accountProfile.events.length > 0 &&
+          accountProfile.events.every((item) => item.name && item.date);
+        setCurrentPage(complete ? 'home' : 'onboarding');
+      } catch {
+        if (mounted) setUser(null);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const hasWeddingProfile = Boolean(user && weddingProfile.brideName && weddingProfile.groomName);
+  const brideDisplay = hasWeddingProfile ? weddingProfile.brideName : '';
+  const groomDisplay = hasWeddingProfile ? weddingProfile.groomName : '';
+  const weddingDateDisplay = weddingProfile.weddingDate
+    ? new Date(`${weddingProfile.weddingDate}T00:00:00`).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '';
+  const ceremonyItinerary = weddingProfile.events.length > 0
+    ? weddingProfile.events.map((event, index) => ({
+        day: `DAY ${String(index + 1).padStart(2, '0')}`,
+        date: event.date
+          ? new Date(`${event.date}T00:00:00`).toLocaleDateString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+            }).toUpperCase()
+          : 'DATE TBD',
+        title: event.name,
+        description: hasWeddingProfile
+          ? `${event.venue || 'Venue to be confirmed'} — curated celebration for ${brideDisplay} & ${groomDisplay}.`
+          : `${event.venue || 'Venue to be confirmed'} — a celebration planned with elegance and care.`,
+        time: event.time || 'Time TBD',
+        attire: 'Ceremony Attire',
+        location: event.venue || 'Venue to be confirmed',
+        featured: index === weddingProfile.events.findIndex((item) => /wedding|pheras|ceremony/i.test(item.name)),
+      }))
+    : itinerary;
 
   const handleFieldChange = (field: keyof typeof emptyForm, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -126,9 +233,17 @@ function App() {
           : `Welcome, ${account.firstName}. Your account has been created.`,
       );
 
-      if (currentPage === 'signin') {
-        setCurrentPage('home');
-      }
+      const accountProfile = await loadAccountProfile(account);
+      setWeddingProfile(accountProfile);
+
+      const profileComplete =
+        Boolean(accountProfile.brideName) &&
+        Boolean(accountProfile.groomName) &&
+        Boolean(accountProfile.weddingDate) &&
+        accountProfile.events.length > 0 &&
+        accountProfile.events.every((item) => item.name && item.date);
+
+      setCurrentPage(profileComplete ? 'home' : 'onboarding');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Authentication request failed.';
       setStatusMessage(message || 'Authentication request failed.');
@@ -144,9 +259,49 @@ function App() {
       // Ignore backend error; logout still updates the local guest interface.
     } finally {
       setUser(null);
+      setWeddingProfile(defaultWeddingProfile);
       setStatusMessage('You have been signed out successfully.');
+      setCurrentPage('home');
     }
   };
+
+  const saveWeddingProfile = (profile: WeddingProfile, complete: boolean) => {
+    setWeddingProfile(profile);
+    if (user) {
+      window.localStorage.setItem(profileStorageKey(user.id), JSON.stringify(profile));
+      void apiFetch('/profile/me', {
+        method: 'PUT',
+        body: JSON.stringify({ profileJson: JSON.stringify(profile) }),
+      }).catch((error) => {
+        setStatusMessage(
+          error instanceof Error
+            ? `Saved on this device, but the server update failed: ${error.message}`
+            : 'Saved on this device, but the server update failed.',
+        );
+      });
+    } else {
+      setStatusMessage('Please sign in before saving your wedding workspace.');
+      setCurrentPage('signin');
+      return;
+    }
+
+    if (complete) {
+      setStatusMessage('Your wedding workspace is ready.');
+      setCurrentPage('home');
+    } else {
+      setStatusMessage('Your wedding setup has been saved.');
+    }
+  };
+
+  if (currentPage === 'onboarding') {
+    return (
+      <WeddingOnboarding
+        initialProfile={weddingProfile}
+        onSaveForLater={(profile) => saveWeddingProfile(profile, false)}
+        onComplete={(profile) => saveWeddingProfile(profile, true)}
+      />
+    );
+  }
 
   if (currentPage === 'signin') {
     return (
@@ -283,6 +438,21 @@ function App() {
   }
 
   return (
+    <StitchHomepage
+      coupleName={hasWeddingProfile ? `${brideDisplay} & ${groomDisplay}` : undefined}
+      destination={hasWeddingProfile ? weddingProfile.city : undefined}
+      weddingDate={hasWeddingProfile ? weddingDateDisplay : undefined}
+      accountLabel={user?.firstName ? `${user.firstName} account portal` : 'Sign up or login'}
+      accountName={user?.firstName || undefined}
+      onLogout={handleLogout}
+      onAccount={() => {
+        setAuthMode('login');
+        setCurrentPage(user ? 'onboarding' : 'signin');
+      }}
+    />
+  );
+
+  return (
     <div className="page-shell">
       <div className="page-frame">
         <header className="topbar">
@@ -308,11 +478,11 @@ function App() {
             className="portal-button"
             onClick={() => {
               setAuthMode('login');
-              setCurrentPage('signin');
+              setCurrentPage(user ? 'onboarding' : 'signin');
             }}
-            aria-label={user ? `${user.firstName} account portal` : 'VIP portal sign in'}
+            aria-label={user?.firstName ? `${user?.firstName} account portal` : 'VIP portal sign in'}
           >
-            {user ? `${user.firstName} • Account` : 'Sign in'}
+            {user?.firstName ? `${user?.firstName} • Account` : 'Sign in'}
           </button>
         </header>
 
@@ -330,19 +500,27 @@ function App() {
 
             <p className="eyebrow">A CELESTIAL CELEBRATION OF ETERNAL UNION</p>
 
-            <h1 className="hero-title">
-              <span>Lady Genevieve Vance</span>
-              <span className="ampersand">&amp;</span>
-              <span>Lord Alexander Montgomery</span>
+            <h1 className={`hero-title ${hasWeddingProfile ? '' : 'hero-tagline'}`}>
+              {hasWeddingProfile ? (
+                <>
+                  <span>{brideDisplay}</span>
+                  <span className="ampersand">&amp;</span>
+                  <span>{groomDisplay}</span>
+                </>
+              ) : (
+                <span>Let&apos;s Plan the Wedding Together</span>
+              )}
             </h1>
 
-            <div className="wedding-meta" aria-label="Wedding details">
-              <span>Villa d’Este</span>
-              <span className="dot">◆</span>
-              <span>Lake Como, Italy</span>
-              <span className="dot">◆</span>
-              <span>October 24, 2025</span>
-            </div>
+            {hasWeddingProfile && (
+              <div className="wedding-meta" aria-label="Wedding details">
+                <span>{weddingProfile.city || 'Wedding Destination'}</span>
+                <span className="dot">◆</span>
+                <span>Wedding Celebration</span>
+                <span className="dot">◆</span>
+                <span>{weddingDateDisplay}</span>
+              </div>
+            )}
 
             <div className="countdown-panel">
               <div className="countdown-header">CHRONOMETER COUNTDOWN TO THE PROCESSION</div>
@@ -371,7 +549,7 @@ function App() {
           <section className="auth-portal" aria-label="Authentication portal">
             <div className="auth-copy">
               <p className="eyebrow">PRIVATE ACCESS</p>
-              <h2>{user ? `Welcome back, ${user.firstName}` : 'Enter the Sanctuary of Eternal Unions'}</h2>
+              <h2>{user?.firstName ? `Welcome back, ${user?.firstName}` : 'Enter the Sanctuary of Eternal Unions'}</h2>
               <p>
                 Secure your preferred seat in the wedding vault, access the guest concierge,
                 and keep every itinerary detail in one private sanctuary.
@@ -489,7 +667,7 @@ function App() {
             </div>
 
             <div className="itinerary-grid">
-              {itinerary.map((item) => (
+              {ceremonyItinerary.map((item) => (
                 <article key={item.title} className={`itinerary-card ${item.featured ? 'featured' : ''}`}>
                   {item.featured && <div className="featured-tag">PRINCIPAL MATRIMONY</div>}
                   <div className="card-head">
