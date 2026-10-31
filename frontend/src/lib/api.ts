@@ -4,6 +4,7 @@ export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? defaultBaseUrl;
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers ?? {}),
