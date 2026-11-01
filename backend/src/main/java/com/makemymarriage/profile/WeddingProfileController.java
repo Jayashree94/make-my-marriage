@@ -4,6 +4,8 @@ import com.makemymarriage.auth.UserEntity;
 import com.makemymarriage.auth.UserRepository;
 import com.makemymarriage.common.api.ApiResponse;
 import java.time.Instant;
+import java.util.Optional;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,21 +20,33 @@ public class WeddingProfileController {
 
     private final UserRepository userRepository;
     private final WeddingProfileRepository profileRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public WeddingProfileController(
         UserRepository userRepository,
-        WeddingProfileRepository profileRepository
+        WeddingProfileRepository profileRepository,
+        JdbcTemplate jdbcTemplate
     ) {
         this.userRepository = userRepository;
         this.profileRepository = profileRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @GetMapping("/me")
     public ApiResponse<WeddingProfileDtos.ProfileResponse> getMyProfile() {
         UserEntity user = currentUser();
-        return profileRepository.findByUser(user)
-            .map(profile -> ApiResponse.success(
-                new WeddingProfileDtos.ProfileResponse(profile.getProfileJson(), profile.getUpdatedAt())
+        Optional<Long> marriageId = currentMarriageId(user);
+        Optional<WeddingProfileEntity> profile = marriageId
+            .flatMap(profileRepository::findByMarriageId);
+        if (profile.isEmpty() && marriageId.isPresent()) {
+            profile = findOwnerProfile(marriageId.get());
+        }
+        if (profile.isEmpty()) {
+            profile = profileRepository.findByUser(user);
+        }
+        return profile
+            .map(resolvedProfile -> ApiResponse.success(
+                new WeddingProfileDtos.ProfileResponse(resolvedProfile.getProfileJson(), resolvedProfile.getUpdatedAt())
             ))
             .orElseGet(() -> ApiResponse.success(null));
     }
@@ -46,8 +60,19 @@ public class WeddingProfileController {
         }
 
         UserEntity user = currentUser();
-        WeddingProfileEntity profile = profileRepository.findByUser(user)
-            .orElse(new WeddingProfileEntity(user, request.profileJson()));
+        Optional<Long> marriageId = currentMarriageId(user);
+        WeddingProfileEntity profile = marriageId
+            .flatMap(profileRepository::findByMarriageId)
+            .orElseGet(() -> marriageId
+                .flatMap(id -> findOwnerProfile(id).map(existing -> {
+                    existing.setMarriageId(id);
+                    return existing;
+                }))
+                .orElseGet(() -> {
+                    WeddingProfileEntity created = new WeddingProfileEntity(user, request.profileJson());
+                    marriageId.ifPresent(created::setMarriageId);
+                    return created;
+                }));
         profile.setProfileJson(request.profileJson());
         profile.setUpdatedAt(Instant.now());
         WeddingProfileEntity saved = profileRepository.save(profile);
@@ -63,5 +88,24 @@ public class WeddingProfileController {
         }
         return userRepository.findByEmail(authentication.getName().toLowerCase())
             .orElseThrow(() -> new IllegalArgumentException("User not found."));
+    }
+
+    private Optional<Long> currentMarriageId(UserEntity user) {
+        Long marriageId = jdbcTemplate.query("""
+            SELECT marriage_id FROM marriage_members
+            WHERE user_id = ? AND status = 'ACTIVE'
+            ORDER BY joined_at DESC LIMIT 1
+            """, rs -> rs.next() ? rs.getLong(1) : null, user.getId());
+        return Optional.ofNullable(marriageId);
+    }
+
+    private Optional<WeddingProfileEntity> findOwnerProfile(Long marriageId) {
+        Long ownerId = jdbcTemplate.query("""
+            SELECT user_id FROM marriage_members
+            WHERE marriage_id = ? AND role = 'OWNER' AND status = 'ACTIVE'
+            ORDER BY joined_at DESC LIMIT 1
+            """, rs -> rs.next() ? rs.getLong(1) : null, marriageId);
+        if (ownerId == null) return Optional.empty();
+        return userRepository.findById(ownerId).flatMap(profileRepository::findByUser);
     }
 }

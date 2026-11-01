@@ -16,7 +16,10 @@ import java.time.Instant;
 @Entity
 @Table(
     name = "wedding_profiles",
-    uniqueConstraints = @UniqueConstraint(name = "uk_wedding_profiles_user", columnNames = "user_id")
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_wedding_profiles_user", columnNames = "user_id"),
+        @UniqueConstraint(name = "uk_wedding_profiles_marriage", columnNames = "marriage_id")
+    }
 )
 public class WeddingProfileEntity {
 
@@ -27,6 +30,9 @@ public class WeddingProfileEntity {
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity user;
+
+    @Column(name = "marriage_id")
+    private Long marriageId;
 
     @Column(name = "profile_json", nullable = false, columnDefinition = "TEXT")
     private String profileJson;
@@ -41,6 +47,9 @@ public class WeddingProfileEntity {
         this.user = user;
         this.profileJson = profileJson;
     }
+
+    public Long getMarriageId() { return marriageId; }
+    public void setMarriageId(Long marriageId) { this.marriageId = marriageId; }
 
     public Long getId() {
         return id;

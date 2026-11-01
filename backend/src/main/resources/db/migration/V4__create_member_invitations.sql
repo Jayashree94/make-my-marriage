@@ -1,0 +1,37 @@
+ALTER TABLE marriages
+    ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(id),
+    ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS marriage_members (
+    marriage_id BIGINT NOT NULL REFERENCES marriages(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(32) NOT NULL DEFAULT 'MEMBER',
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    invited_by BIGINT REFERENCES users(id),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (marriage_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS member_invitations (
+    id UUID PRIMARY KEY,
+    marriage_id BIGINT NOT NULL REFERENCES marriages(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    role VARCHAR(32) NOT NULL DEFAULT 'MEMBER',
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    invited_by BIGINT NOT NULL REFERENCES users(id),
+    expires_at TIMESTAMPTZ NOT NULL,
+    sent_at TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_member_invitations_marriage
+    ON member_invitations(marriage_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marriage_members_user
+    ON marriage_members(user_id);

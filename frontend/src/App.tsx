@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { apiFetch } from './lib/api';
 import StitchHomepage from './components/StitchHomepage';
+import MemberInvitationPage from './components/MemberInvitationPage';
+import InvitationDecisionPage from './components/InvitationDecisionPage';
 import {
   defaultWeddingProfile,
   WeddingOnboarding,
@@ -102,7 +104,9 @@ function App() {
   const [user, setUser] = useState<UserSession | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState<'home' | 'signin' | 'onboarding'>('home');
+  const [currentRole, setCurrentRole] = useState<string>('');
+  const [invitationToken, setInvitationToken] = useState('');
+  const [currentPage, setCurrentPage] = useState<'home' | 'signin' | 'onboarding' | 'members' | 'invitation'>('home');
   const [weddingProfile, setWeddingProfile] = useState<WeddingProfile>(() => {
     return defaultWeddingProfile;
   });
@@ -132,19 +136,85 @@ function App() {
     return resolvedProfile;
   };
 
+  const acceptInvitation = async () => {
+    const token = invitationToken || window.sessionStorage.getItem('pendingInvitationToken');
+    if (!token) return;
+    if (!user) {
+      window.sessionStorage.setItem('pendingInvitationToken', token);
+      setAuthMode('login');
+      setStatusMessage('Sign in or create an account, then return here to accept the invitation.');
+      setCurrentPage('signin');
+      return;
+    }
+
+    try {
+      await apiFetch(`/members/invitations/accept/${token}`, { method: 'POST' });
+      window.sessionStorage.removeItem('pendingInvitationToken');
+      window.history.replaceState({}, '', '/');
+      setInvitationToken('');
+      setStatusMessage('Your member invitation has been accepted.');
+      const acceptedProfile = await loadAccountProfile(user);
+      setWeddingProfile(acceptedProfile);
+      const acceptedComplete =
+        Boolean(acceptedProfile.brideName) &&
+        Boolean(acceptedProfile.groomName) &&
+        Boolean(acceptedProfile.weddingDate) &&
+        acceptedProfile.events.length > 0;
+      setCurrentPage(acceptedComplete ? 'home' : 'onboarding');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invitation could not be accepted.';
+      if (message.includes('Sign in with the invited email')) {
+        await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
+        setUser(null);
+        setWeddingProfile(defaultWeddingProfile);
+        setAuthMode('login');
+        setStatusMessage('Sign in with the invited email address to accept this invitation.');
+        setCurrentPage('signin');
+      } else {
+        setStatusMessage(message);
+      }
+    }
+  };
+
+  const rejectInvitation = () => {
+    window.sessionStorage.removeItem('pendingInvitationToken');
+    window.history.replaceState({}, '', '/');
+    setInvitationToken('');
+    setWeddingProfile(defaultWeddingProfile);
+    setStatusMessage("Let's set up your wedding page");
+    if (!user) {
+      setAuthMode('register');
+      setCurrentPage('signin');
+    } else {
+      setCurrentPage('onboarding');
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
+    const memberAcceptMatch = window.location.pathname.match(/^\/members\/accept\/([^/]+)\/?$/);
+    const tokenFromUrl = memberAcceptMatch?.[1] ?? '';
+    if (tokenFromUrl) {
+      window.sessionStorage.setItem('pendingInvitationToken', tokenFromUrl);
+      setInvitationToken(tokenFromUrl);
+      setCurrentPage('invitation');
+    }
 
     void (async () => {
       try {
         const response = await apiFetch<{ success: boolean; data?: UserSession }>('/auth/me');
-        if (!mounted || !response.data) return;
+        if (!mounted) return;
+        if (!response.data) {
+          if (!tokenFromUrl) setCurrentPage('home');
+          return;
+        }
 
         const accountProfile = await loadAccountProfile(response.data);
         if (!mounted) return;
 
         setUser(response.data);
         setWeddingProfile(accountProfile);
+        if (tokenFromUrl) return;
         const complete =
           Boolean(accountProfile.brideName) &&
           Boolean(accountProfile.groomName) &&
@@ -153,7 +223,10 @@ function App() {
           accountProfile.events.every((item) => item.name && item.date);
         setCurrentPage(complete ? 'home' : 'onboarding');
       } catch {
-        if (mounted) setUser(null);
+        if (mounted) {
+          setUser(null);
+          if (!tokenFromUrl) setCurrentPage('home');
+        }
       }
     })();
 
@@ -233,6 +306,14 @@ function App() {
           : `Welcome, ${account.firstName}. Your account has been created.`,
       );
 
+      const pendingToken = window.sessionStorage.getItem('pendingInvitationToken');
+      if (pendingToken) {
+        setInvitationToken(pendingToken);
+        window.history.replaceState({}, '', `/members/accept/${pendingToken}`);
+        setCurrentPage('invitation');
+        return;
+      }
+
       const accountProfile = await loadAccountProfile(account);
       setWeddingProfile(accountProfile);
 
@@ -252,6 +333,16 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (!user) {
+      setCurrentRole('');
+      return;
+    }
+    void apiFetch<{ data?: { currentRole?: string } }>('/members')
+      .then((response) => setCurrentRole(response.data?.currentRole?.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'MANAGER'))
+      .catch(() => setCurrentRole('MANAGER'));
+  }, [user?.id]);
+
   const handleLogout = async () => {
     try {
       await apiFetch('/auth/logout', { method: 'POST' });
@@ -265,20 +356,23 @@ function App() {
     }
   };
 
-  const saveWeddingProfile = (profile: WeddingProfile, complete: boolean) => {
+  const saveWeddingProfile = async (profile: WeddingProfile, complete: boolean) => {
     setWeddingProfile(profile);
     if (user) {
-      window.localStorage.setItem(profileStorageKey(user.id), JSON.stringify(profile));
-      void apiFetch('/profile/me', {
-        method: 'PUT',
-        body: JSON.stringify({ profileJson: JSON.stringify(profile) }),
-      }).catch((error) => {
+      try {
+        await apiFetch('/profile/me', {
+          method: 'PUT',
+          body: JSON.stringify({ profileJson: JSON.stringify(profile) }),
+        });
+        window.localStorage.setItem(profileStorageKey(user.id), JSON.stringify(profile));
+      } catch (error) {
         setStatusMessage(
           error instanceof Error
             ? `Saved on this device, but the server update failed: ${error.message}`
             : 'Saved on this device, but the server update failed.',
         );
-      });
+        return;
+      }
     } else {
       setStatusMessage('Please sign in before saving your wedding workspace.');
       setCurrentPage('signin');
@@ -299,6 +393,26 @@ function App() {
         initialProfile={weddingProfile}
         onSaveForLater={(profile) => saveWeddingProfile(profile, false)}
         onComplete={(profile) => saveWeddingProfile(profile, true)}
+      />
+    );
+  }
+
+  if (currentPage === 'members') {
+    return user ? (
+      <MemberInvitationPage
+        accountName={user.firstName}
+        onHome={() => setCurrentPage('home')}
+        onLogout={handleLogout}
+      />
+    ) : null;
+  }
+
+  if (currentPage === 'invitation') {
+    return (
+      <InvitationDecisionPage
+        token={invitationToken || window.sessionStorage.getItem('pendingInvitationToken') || ''}
+        onAccept={() => void acceptInvitation()}
+        onReject={rejectInvitation}
       />
     );
   }
@@ -444,7 +558,12 @@ function App() {
       weddingDate={hasWeddingProfile ? weddingDateDisplay : undefined}
       accountLabel={user?.firstName ? `${user.firstName} account portal` : 'Sign up or login'}
       accountName={user?.firstName || undefined}
+      currentRole={currentRole || undefined}
       onLogout={handleLogout}
+      onMembers={user ? () => setCurrentPage('members') : () => {
+        setAuthMode('login');
+        setCurrentPage('signin');
+      }}
       onAccount={() => {
         setAuthMode('login');
         setCurrentPage(user ? 'onboarding' : 'signin');
