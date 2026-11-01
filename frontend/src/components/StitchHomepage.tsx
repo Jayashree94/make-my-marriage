@@ -4,8 +4,10 @@ type StitchHomepageProps = {
   weddingDate?: string;
   accountLabel?: string;
   accountName?: string;
+  currentRole?: string;
   onAccount: () => void;
   onLogout?: () => void;
+  onMembers?: () => void;
 };
 
 const portfolioCards = [
@@ -35,8 +37,10 @@ export default function StitchHomepage({
   weddingDate,
   accountLabel = 'Sign up or login',
   accountName,
+  currentRole,
   onAccount,
   onLogout,
+  onMembers,
 }: StitchHomepageProps) {
   return (
     <div className="stitch-page">
@@ -54,10 +58,11 @@ export default function StitchHomepage({
           <a href="#protocol">VIP Concierge</a>
           <a href="#scenography">Scenography</a>
           <a href="#suite">Executive Suite</a>
+          {accountName && onMembers && <button type="button" onClick={onMembers}>Members</button>}
         </nav>
         <div className="stitch-account-actions">
           <button type="button" className="stitch-portal" onClick={onAccount} aria-label={accountLabel}>
-            ◆ {accountName || 'Sign up / Login'}
+            ◆ {accountName ? `${accountName}${currentRole ? ` · ${currentRole}` : ''}` : 'Sign up / Login'}
           </button>
           {accountName && (
             <button type="button" className="stitch-logout" onClick={onLogout} aria-label="Logout">

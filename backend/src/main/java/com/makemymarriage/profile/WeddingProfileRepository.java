@@ -6,4 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface WeddingProfileRepository extends JpaRepository<WeddingProfileEntity, Long> {
     Optional<WeddingProfileEntity> findByUser(UserEntity user);
+    Optional<WeddingProfileEntity> findByMarriageId(Long marriageId);
 }
